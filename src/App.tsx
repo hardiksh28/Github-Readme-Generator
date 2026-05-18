@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ReadmeGenerator } from './components/ReadmeGenerator';
-import { Sparkles, GitBranch, ArrowRight, AlertCircle, FileCode2 } from 'lucide-react';
+import { Sparkles, GitBranch, ArrowRight, AlertCircle, FileCode2, Settings } from 'lucide-react';
 import { parseGithubUrl } from './utils/github';
+import { getApiKey, setApiKey } from './utils/ai';
 import './App.css';
 
 function App() {
@@ -12,9 +13,26 @@ function App() {
   const [activeTask, setActiveTask] = useState<{type: 'url' | 'code', payload: string} | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+
+  useEffect(() => {
+    setApiKeyInput(getApiKey());
+  }, []);
+
+  const handleSaveApiKey = () => {
+    setApiKey(apiKeyInput.trim());
+    setShowSettings(false);
+  };
+
   const handleStart = (e?: React.FormEvent) => {
     e?.preventDefault();
     
+    if (!getApiKey()) {
+      setShowSettings(true);
+      return;
+    }
+
     if (inputMode === 'url') {
       if (!urlInput.trim()) return;
       const parsed = parseGithubUrl(urlInput);
@@ -43,13 +61,40 @@ function App() {
 
   return (
     <div className="app-layout">
+      {showSettings && (
+        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h2 className="modal-title">API Configuration</h2>
+            <p className="modal-desc">
+              Autodoc Live uses the Google Gemini API to analyze your code and generate accurate documentation. 
+              Get your free API key from Google AI Studio.
+            </p>
+            <input
+              type="password"
+              className="modal-input"
+              placeholder="AIzaSy..."
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()}
+            />
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowSettings(false)}>Cancel</button>
+              <button className="btn-primary" onClick={handleSaveApiKey}>Save Key</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="navbar">
         <button onClick={reset} className="brand">
           <Sparkles className="brand-icon" size={24} />
           Autodoc <span className="text-gradient">Live</span>
         </button>
         <div className="nav-links">
-          <a href="https://github.com" target="_blank" rel="noreferrer" title="View Source">
+          <button onClick={() => setShowSettings(true)} title="Settings" style={{ padding: '0.5rem' }}>
+            <Settings size={20} />
+          </button>
+          <a href="https://github.com" target="_blank" rel="noreferrer" title="View Source" style={{ padding: '0.5rem' }}>
             <GitBranch size={20} />
           </a>
         </div>
@@ -62,7 +107,7 @@ function App() {
               Craft the perfect <span className="text-gradient">README</span> instantly.
             </h1>
             <p className="hero-subtitle">
-              Provide your repository URL or paste your code directly. Our engine analyzes your codebase to generate a beautiful, comprehensive README.md in seconds.
+              Provide your repository URL or paste your code directly. Our engine analyzes your codebase using Gemini to generate a beautiful, comprehensive README.md in seconds.
             </p>
             
             <div className="input-mode-toggles">

@@ -1,9 +1,17 @@
 import type { RepoData } from './github';
 
+export const getApiKey = () => {
+  return localStorage.getItem('gemini_api_key') || '';
+};
+
+export const setApiKey = (key: string) => {
+  localStorage.setItem('gemini_api_key', key);
+};
+
 export const generateReadmePrompt = (data: RepoData): string => {
   const { owner, repo, description, language, files, packageJson } = data;
 
-  let prompt = `Generate a comprehensive and professional README.md for the following repository:\n`;
+  let prompt = `You are an expert technical writer and developer. Generate a comprehensive and professional README.md for the following repository:\n`;
   prompt += `Repository: ${owner}/${repo}\n`;
   if (description) prompt += `Description: ${description}\n`;
   if (language) prompt += `Primary Language: ${language}\n`;
@@ -11,14 +19,16 @@ export const generateReadmePrompt = (data: RepoData): string => {
   const keyFiles = files.filter(f => 
     !f.includes('node_modules') && 
     !f.includes('.git') && 
-    (f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.py') || f.endsWith('.go') || f.endsWith('.tsx'))
-  ).slice(0, 15);
+    !f.includes('dist') &&
+    !f.includes('build') &&
+    (f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.py') || f.endsWith('.go') || f.endsWith('.tsx') || f.endsWith('.md'))
+  ).slice(0, 30);
 
-  prompt += `Key Files (up to 15):\n- ${keyFiles.join('\n- ')}\n\n`;
+  prompt += `Repository File Structure:\n- ${keyFiles.join('\n- ')}\n\n`;
 
   if (packageJson) {
     const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-    const depNames = Object.keys(deps).slice(0, 10);
+    const depNames = Object.keys(deps);
     prompt += `Dependencies include: ${depNames.join(', ')}\n\n`;
   }
 
@@ -26,218 +36,113 @@ export const generateReadmePrompt = (data: RepoData): string => {
 1. Project Title and Badges
 2. Description
 3. Key Features
-4. Installation
-5. Usage
-6. Technologies Used
+4. Tech Stack
+5. Installation
+6. Usage
 7. Contributing
 8. License
 
-Use modern markdown formatting, emojis, and make it look professional.`;
+Use modern markdown formatting, emojis, and make it look extremely professional. Return ONLY the markdown code, no other text.`;
 
   return prompt;
 };
 
-// Mock AI generation based on repository features
 export const generateReadme = async (data: RepoData, onProgress: (step: string) => void): Promise<string> => {
-  onProgress('Initializing AI model...');
-  await new Promise(r => setTimeout(r, 1000));
-  
-  onProgress('Generating README structure...');
-  await new Promise(r => setTimeout(r, 1500));
-
-  onProgress('Writing documentation...');
-  await new Promise(r => setTimeout(r, 1500));
-
-  const { owner, repo, description, language, packageJson } = data;
-  
-  const formattedRepoName = repo.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  const defaultDesc = `A powerful, open-source project built with ${language || 'modern web technologies'}.`;
-
-  let deps: string[] = [];
-  let installCommand = 'npm install';
-  let startCommand = 'npm start';
-
-  if (packageJson) {
-    deps = Object.keys({ ...packageJson.dependencies });
-    if (filesContain(data.files, 'yarn.lock')) {
-      installCommand = 'yarn install';
-      startCommand = 'yarn dev';
-    } else if (filesContain(data.files, 'pnpm-lock.yaml')) {
-      installCommand = 'pnpm install';
-      startCommand = 'pnpm dev';
-    } else {
-      installCommand = 'npm install';
-      startCommand = 'npm run dev';
-    }
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('API Key is missing. Please set your Gemini API key in the settings.');
   }
 
-  const techStack = deps.slice(0, 5).map(d => `- **${d}**`).join('\n');
-  const fallbackTechStack = language ? `- **${language}**\n- **Node.js**` : `- **Modern Web Technologies**`;
+  onProgress('Initializing AI model...');
+  const prompt = generateReadmePrompt(data);
 
-  return `
-<div align="center">
+  onProgress('Generating intelligent content (this may take a few seconds)...');
   
-# ✨ ${formattedRepoName} ✨
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.4,
+        }
+      })
+    });
 
-[![GitHub license](https://img.shields.io/github/license/${owner}/${repo})](https://github.com/${owner}/${repo}/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/${owner}/${repo})](https://github.com/${owner}/${repo}/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/${owner}/${repo})](https://github.com/${owner}/${repo}/issues)
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error?.message || 'Failed to generate README from API.');
+    }
 
-${description || defaultDesc}
-
-[Report Bug](https://github.com/${owner}/${repo}/issues) · [Request Feature](https://github.com/${owner}/${repo}/issues)
-
-</div>
-
-## 🚀 About The Project
-
-${description ? description : `**${formattedRepoName}** is an innovative project designed to solve complex problems effortlessly. Built with clean code practices and scalability in mind, it provides a solid foundation for your next big idea.`}
-
-### 🎯 Key Features
-
-* **Blazing Fast Performance**: Optimized for speed and efficiency.
-* **Developer Friendly**: Clean architecture and highly maintainable codebase.
-* **Modern Stack**: Built using industry-standard technologies.
-* **Extensible**: Easy to add new features and integrations.
-
-## 💻 Technologies Used
-
-${techStack || fallbackTechStack}
-
-## 🛠️ Getting Started
-
-Follow these steps to get a local copy up and running.
-
-### Prerequisites
-
-* Node.js (v16 or higher recommended)
-* Git
-
-### Installation
-
-1. Clone the repo
-   \`\`\`sh
-   git clone https://github.com/${owner}/${repo}.git
-   \`\`\`
-2. Navigate to the project directory
-   \`\`\`sh
-   cd ${repo}
-   \`\`\`
-3. Install NPM packages
-   \`\`\`sh
-   ${installCommand}
-   \`\`\`
-
-## 📖 Usage
-
-To start the development server, run:
-
-\`\`\`sh
-${startCommand}
-\`\`\`
-
-## 🤝 Contributing
-
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-1. Fork the Project
-2. Create your Feature Branch (\`git checkout -b feature/AmazingFeature\`)
-3. Commit your Changes (\`git commit -m 'Add some AmazingFeature'\`)
-4. Push to the Branch (\`git push origin feature/AmazingFeature\`)
-5. Open a Pull Request
-
-## 📜 License
-
-Distributed under the MIT License. See \`LICENSE\` for more information.
-
-## ✉️ Contact
-
-Project Link: [https://github.com/${owner}/${repo}](https://github.com/${owner}/${repo})
-`;
+    onProgress('Writing documentation...');
+    const result = await response.json();
+    let text = result.candidates[0].content.parts[0].text;
+    
+    if (text.startsWith('```markdown')) {
+      text = text.replace(/^```markdown\n/, '');
+      text = text.replace(/\n```$/, '');
+    } else if (text.startsWith('```')) {
+      text = text.replace(/^```\n/, '');
+      text = text.replace(/\n```$/, '');
+    }
+    
+    return text;
+  } catch (error: any) {
+    throw new Error(`AI Generation failed: ${error.message}`);
+  }
 };
 
-function filesContain(files: string[], filename: string): boolean {
-  return files.some(f => f.endsWith(filename));
-}
-
-// Mock AI generation based on raw code snippet
 export const generateReadmeFromCode = async (code: string, onProgress: (step: string) => void): Promise<string> => {
-  onProgress('Analyzing code snippet...');
-  await new Promise(r => setTimeout(r, 1000));
-  
-  onProgress('Generating intelligent content...');
-  await new Promise(r => setTimeout(r, 1500));
-
-  onProgress('Writing documentation...');
-  await new Promise(r => setTimeout(r, 1500));
-
-  // Try to detect what the code is roughly about
-  const isReact = code.includes('import React') || code.includes('useState') || code.includes('className=');
-  const isPython = code.includes('def ') || code.includes('import sys') || code.includes('print(');
-  const isNode = code.includes('require(') || code.includes('module.exports');
-
-  let title = "Code Snippet Component";
-  let tech = "- **JavaScript / TypeScript**";
-  let description = "A robust and reusable code snippet designed for high performance and maintainability.";
-  
-  if (isReact) {
-    title = "React UI Component";
-    tech = "- **React**\n- **TypeScript**\n- **CSS/SCSS**";
-    description = "A responsive and dynamic React component ready to be integrated into modern web applications.";
-  } else if (isPython) {
-    title = "Python Utility Script";
-    tech = "- **Python 3**";
-    description = "A high-efficiency Python script providing core utilities and processing logic.";
-  } else if (isNode) {
-    title = "Node.js Module";
-    tech = "- **Node.js**";
-    description = "A backend Node.js module built for scalability and fast execution.";
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('API Key is missing. Please set your Gemini API key in the settings.');
   }
 
-  return `
-<div align="center">
+  onProgress('Analyzing code snippet...');
+  const prompt = `You are an expert technical writer and developer. Generate a comprehensive README.md component documentation for the following code snippet:\n\n\`\`\`\n${code}\n\`\`\`\n\nPlease include: Title, Overview, Key Features, Tech Stack, Integration/Usage Instructions. Return ONLY the markdown code.`;
   
-# ✨ ${title} ✨
+  onProgress('Generating intelligent content (this may take a few seconds)...');
+  
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+        }
+      })
+    });
 
-A documented breakdown of the provided code snippet.
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error?.message || 'Failed to generate README from API.');
+    }
 
-</div>
-
-## 🚀 Overview
-
-${description}
-
-### 🎯 Key Highlights
-
-* **Clean Implementation**: Easy to read and well structured.
-* **Modular**: Can be easily dropped into existing codebases.
-* **Optimized**: Designed for performance out of the box.
-
-## 💻 Tech Stack
-
-${tech}
-
-## 🛠️ Integration
-
-To use this code in your project, simply copy the source files into your \`src\` or \`utils\` directory and import it where necessary.
-
-\`\`\`javascript
-// Example Import
-import { ComponentOrFunction } from './path/to/code';
-\`\`\`
-
-## 📖 Usage Example
-
-Here is a basic example of how to implement this code:
-
-\`\`\`javascript
-// Initialize or mount the code
-const result = ComponentOrFunction();
-console.log("Execution successful", result);
-\`\`\`
-
-## 📝 Code Analysis
-
-The provided code was automatically analyzed. Based on the structure, it appears to handle core logic operations efficiently. Make sure to install any required peer dependencies.
-`;
+    onProgress('Writing documentation...');
+    const result = await response.json();
+    let text = result.candidates[0].content.parts[0].text;
+    
+    if (text.startsWith('```markdown')) {
+      text = text.replace(/^```markdown\n/, '');
+      text = text.replace(/\n```$/, '');
+    } else if (text.startsWith('```')) {
+      text = text.replace(/^```\n/, '');
+      text = text.replace(/\n```$/, '');
+    }
+    
+    return text;
+  } catch (error: any) {
+    throw new Error(`AI Generation failed: ${error.message}`);
+  }
 };
