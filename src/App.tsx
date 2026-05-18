@@ -88,7 +88,7 @@ function App() {
       <nav className="navbar">
         <button onClick={reset} className="brand">
           <Sparkles className="brand-icon" size={24} />
-          Autodoc <span className="text-gradient">Live</span>
+          Auto<span className="text-gradient">Doc</span>
         </button>
         <div className="nav-links">
           <button onClick={() => setShowSettings(true)} title="Settings" style={{ padding: '0.5rem' }}>
